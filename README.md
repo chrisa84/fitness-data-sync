@@ -163,7 +163,7 @@ Outputs JSON for scripting.
 
 garmin-sync includes a read-only MCP server that exposes the local SQLite database as tools for Claude and other MCP clients.
 
-**Read-only guarantee**: The server opens SQLite in `mode=ro` (enforced at the driver level). It never calls Garmin Connect and never writes to the database.
+The server opens SQLite in `mode=ro` (enforced at the driver level). It never calls Garmin Connect and never writes to the database.
 
 ### Install
 
@@ -240,6 +240,8 @@ If you fix a normalisation bug, or want to re-derive tables from existing raw pa
 ```bash
 garmin-sync reprocess-activity-derived
 garmin-sync reprocess-health-derived
+garmin-sync reprocess-sleep
+garmin-sync reprocess-hrv
 garmin-sync reprocess-performance-derived
 garmin-sync reprocess-all-derived
 ```
@@ -405,8 +407,8 @@ Create a `.bat` file:
 cd C:\repos\Garmin-Sync
 garmin-sync sync-recent-activities --limit 20
 garmin-sync sync-activity-details --limit 20
-garmin-sync sync-health --from 2026-06-02 --to 2026-06-09
-garmin-sync sync-performance --from 2026-06-02 --to 2026-06-09
+garmin-sync sync-health --from <7-days-ago> --to <today>
+garmin-sync sync-performance --from <7-days-ago> --to <today>
 ```
 
 ---
@@ -424,8 +426,9 @@ garmin_sync/
   rate_limit.py    # Delay, retry, and backoff
   garmin_client.py # Adapter wrapping garminconnect.Garmin
   sync_engine.py   # Sync orchestration (activities, health, performance)
+  mcp_server.py    # MCP server (FastMCP, stdio, read-only)
   export.py        # JSON and CSV export
-  queries.py       # Query helpers used by query-* commands
+  queries.py       # Shared query layer (CLI and MCP)
 
 tests/
   conftest.py
