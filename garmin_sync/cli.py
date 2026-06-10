@@ -1,9 +1,10 @@
 """
 CLI entry point: garmin-sync <command>
 
-Commands (MVP):
+Commands:
   init-db                  Create/migrate SQLite database.
   auth                     Authenticate with Garmin Connect and store tokens.
+  sync-all                 Incremental sync of all data types in one command.
   sync-recent-activities   Fetch most recent N activities (incremental sync).
   backfill-activities      Fetch all activities page by page (historical backfill).
   status                   Show sync state, counts, and recent runs.
@@ -498,6 +499,75 @@ def cmd_backfill_performance(
     except Exception as exc:
         typer.echo(f"backfill-performance failed: {exc}", err=True)
         raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# sync-all
+# ---------------------------------------------------------------------------
+
+
+@app.command("sync-all")
+def cmd_sync_all(
+    limit: Annotated[int, typer.Option("--limit", help="Number of recent activities and details to fetch")] = 20,
+    days: Annotated[int, typer.Option("--days", help="Days window for health and performance sync")] = 7,
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+    env_file: Annotated[Optional[str], typer.Option("--config")] = None,
+    db_path: Annotated[Optional[str], typer.Option("--db")] = None,
+    log_level: Annotated[Optional[str], typer.Option("--log-level")] = None,
+) -> None:
+    """
+    Incremental sync of all data types in one command.
+
+    Runs in order: activity summaries, activity details, health data,
+    performance ranges, performance daily metrics.
+
+    Equivalent to running sync-recent-activities, sync-activity-details,
+    sync-recent-health, sync-performance-ranges, and sync-performance in
+    sequence with matching defaults.
+
+    Stops immediately on rate-limit or auth errors.
+    Use --dry-run to call Garmin without writing to the database.
+    """
+    from datetime import date as _date, timedelta as _td
+
+    config, conn = _get_config_and_conn(env_file, db_path, log_level)
+
+    if dry_run:
+        typer.echo("[dry-run] Garmin will be called. No database writes will happen.")
+
+    client = GarminClient(config)
+    from_date = (_date.today() - _td(days=days)).isoformat()
+    to_date = _today()
+
+    steps: list[tuple[str, object]] = [
+        ("activities", lambda: ActivitySyncEngine(config, conn, client, dry_run=dry_run).sync_recent_activities(limit=limit)),
+        ("activity-details", lambda: DetailSyncEngine(config, conn, client, dry_run=dry_run).sync_recent_details(limit=limit)),
+        ("health", lambda: HealthSyncEngine(config, conn, client, dry_run=dry_run).sync_recent_health(days=days)),
+        ("performance-ranges", lambda: PerformanceSyncEngine(config, conn, client, dry_run=dry_run).sync_performance_ranges(from_date, to_date)),
+        ("performance", lambda: PerformanceDaySyncEngine(config, conn, client, dry_run=dry_run).sync_performance(from_date, to_date)),
+    ]
+
+    for step_name, step_fn in steps:
+        typer.echo(f"\n[{step_name}]")
+        try:
+            result = step_fn()
+            parts = [f"fetched={result['fetched']}", f"stored={result['stored']}"]
+            if "skipped" in result:
+                parts.append(f"skipped={result['skipped']}")
+            if "updated" in result:
+                parts.append(f"updated={result['updated']}")
+            typer.echo("Done. " + " ".join(parts))
+        except LoginRateLimitedError as exc:
+            typer.echo(f"Rate limited during login: {exc}", err=True)
+            raise typer.Exit(1)
+        except RateLimitExceeded as exc:
+            typer.echo(f"Rate limited: {exc}", err=True)
+            raise typer.Exit(1)
+        except Exception as exc:
+            typer.echo(f"{step_name} failed: {exc}", err=True)
+            raise typer.Exit(1)
+
+    typer.echo("\nAll done.")
 
 
 # ---------------------------------------------------------------------------

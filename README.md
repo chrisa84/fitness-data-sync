@@ -122,10 +122,27 @@ All backfills are **resumable**: if interrupted, rerun the same command and it c
 ## Daily incremental sync
 
 ```bash
+garmin-sync sync-all
+```
+
+Syncs everything in one command: activity summaries, activity details, health data (last 7 days), performance ranges, and daily performance metrics.
+
+Options:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--limit N` | 20 | Number of recent activities and details to fetch |
+| `--days N` | 7 | Days window for health and performance data |
+| `--dry-run` | off | Call Garmin but do not write to the database |
+
+Or run the individual steps manually:
+
+```bash
 garmin-sync sync-recent-activities --limit 20
 garmin-sync sync-activity-details --limit 20
-garmin-sync sync-health --from 2026-06-02 --to 2026-06-09
-garmin-sync sync-performance --from 2026-06-02 --to 2026-06-09
+garmin-sync sync-recent-health --days 7
+garmin-sync sync-performance-ranges
+garmin-sync sync-performance
 ```
 
 All sync commands are **idempotent**: rerunning does not create duplicates. If Garmin has corrected an activity or metric since the last sync, the `payload_hash` changes and the row is updated automatically.
@@ -389,14 +406,9 @@ WHERE data_type = 'activity_summary' AND garmin_id = '12345678901';
 crontab -e
 ```
 
-Add (adjust paths and date ranges as needed):
+Add (adjust path as needed):
 ```
-0 6 * * * cd /path/to/Garmin-Sync && \
-  garmin-sync sync-recent-activities --limit 20 && \
-  garmin-sync sync-activity-details --limit 20 && \
-  garmin-sync sync-health --from $(date -d '7 days ago' +%Y-%m-%d) --to $(date +%Y-%m-%d) && \
-  garmin-sync sync-performance --from $(date -d '7 days ago' +%Y-%m-%d) --to $(date +%Y-%m-%d) \
-  >> /var/log/garmin-sync.log 2>&1
+0 6 * * * cd /path/to/Garmin-Sync && garmin-sync sync-all >> /var/log/garmin-sync.log 2>&1
 ```
 
 ### Windows Task Scheduler
@@ -405,10 +417,7 @@ Create a `.bat` file:
 ```bat
 @echo off
 cd C:\repos\Garmin-Sync
-garmin-sync sync-recent-activities --limit 20
-garmin-sync sync-activity-details --limit 20
-garmin-sync sync-health --from <7-days-ago> --to <today>
-garmin-sync sync-performance --from <7-days-ago> --to <today>
+garmin-sync sync-all
 ```
 
 ---
