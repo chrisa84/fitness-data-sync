@@ -519,14 +519,17 @@ def cmd_sync_all(
     Incremental sync of all data types in one command.
 
     Runs in order: activity summaries, activity details, health data,
-    performance ranges, performance daily metrics.
+    performance ranges, performance daily metrics, then a local derive pass
+    that populates training_load, HR zones, and running dynamics (including
+    L/R ground-contact balance) from the freshly-synced raw payloads.
 
     Equivalent to running sync-recent-activities, sync-activity-details,
-    sync-recent-health, sync-performance-ranges, and sync-performance in
-    sequence with matching defaults.
+    sync-recent-health, sync-performance-ranges, sync-performance, and
+    reprocess-activity-derived in sequence with matching defaults.
 
     Stops immediately on rate-limit or auth errors.
-    Use --dry-run to call Garmin without writing to the database.
+    Use --dry-run to call Garmin without writing to the database (the derive
+    pass is skipped under --dry-run since there are no new payloads to derive).
     """
     from datetime import date as _date, timedelta as _td
 
@@ -565,6 +568,20 @@ def cmd_sync_all(
             raise typer.Exit(1)
         except Exception as exc:
             typer.echo(f"{step_name} failed: {exc}", err=True)
+            raise typer.Exit(1)
+
+    # Local-only derive pass: turns the raw detail payloads we just stored into
+    # the derived activity columns (training_load, HR zones, running dynamics
+    # incl. L/R ground-contact balance). No Garmin calls. Skipped on dry-run
+    # because no new payloads were written to derive from.
+    typer.echo("\n[reprocess-derived]")
+    if dry_run:
+        typer.echo("[dry-run] skipping derive pass.")
+    else:
+        try:
+            cmd_reprocess_activity_derived(env_file=env_file, db_path=db_path, log_level=log_level)
+        except Exception as exc:
+            typer.echo(f"reprocess-derived failed: {exc}", err=True)
             raise typer.Exit(1)
 
     typer.echo("\nAll done.")
