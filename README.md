@@ -46,6 +46,37 @@ pip install -e ".[parquet]"
 
 ---
 
+## Running in Docker
+
+A `Dockerfile` is included for running the sync as a container (e.g. on a server
+via Coolify). It pins Python 3.12 regardless of the host, and the container
+**idles by default** so you can drive it on demand:
+
+```bash
+docker build -t garmin-sync .
+docker run -d --name garmin-sync \
+  -e GARMIN_DB_PATH=/data/garmin_sync.db \
+  -e GARMIN_TOKEN_PATH=/tokens \
+  -v /host/path/to/data:/data \
+  -v garmin-tokens:/tokens \
+  garmin-sync
+```
+
+Then drive it with `docker exec`:
+
+- **One-time auth** (interactive — handles MFA):
+  `docker exec -it -e GARMIN_EMAIL=... -e GARMIN_PASSWORD=... garmin-sync garmin-sync auth`
+- **Init + backfill** (resumable): `docker exec garmin-sync garmin-sync init-db`, then
+  `docker exec garmin-sync garmin-sync backfill-activities`, etc.
+- **Recurring sync:** run `garmin-sync sync-all` on a schedule (host cron or a
+  Coolify Scheduled Task).
+
+Tokens persist on the `/tokens` volume, so auth survives restarts/redeploys. The
+DB is opened **WAL**, so a separate reader (e.g. a visualiser) can share the same
+DB file on the same host without blocking the sync.
+
+---
+
 ## Configuration
 
 Copy `.env.example` to `.env` and fill in your credentials:
