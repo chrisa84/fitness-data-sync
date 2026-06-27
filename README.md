@@ -136,17 +136,23 @@ Run these once to populate the full history:
 # All activities (most-recent-first, resumable)
 garmin-sync backfill-activities
 
-# Activity detail (splits, laps)
+# Activity detail (laps)
 garmin-sync backfill-activity-details
 
 # Health data (daily summary, sleep, HRV, stress, body battery, heart rate)
 garmin-sync sync-health --from 2020-01-01 --to 2026-06-09
 
-# Performance metrics (VO2max, training load, readiness, fitness age)
+# Per-day performance metrics (VO2max, training load, readiness, fitness age) — resumable
 garmin-sync backfill-performance --from 2020-01-01 --to 2026-06-09
+
+# Range-based performance metrics (lactate threshold, race predictions, endurance score, hill score)
+garmin-sync sync-performance-ranges --from 2020-01-01
+
+# Populate derived fields (splits, training zones, running dynamics) from raw payloads
+garmin-sync reprocess-all-derived
 ```
 
-All backfills are **resumable**: if interrupted, rerun the same command and it continues from where it stopped.
+All backfill commands are **resumable**: if interrupted, rerun the same command and it continues from where it stopped. `reprocess-all-derived` is local-only (no Garmin calls) and safe to rerun any time.
 
 ---
 
