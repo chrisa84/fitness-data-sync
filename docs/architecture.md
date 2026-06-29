@@ -139,16 +139,17 @@ All normalised tables can be rebuilt from `raw_payload` using `reprocess-*` comm
 - Backfill: `backfill-intraday --from-date 2020-01-01` (~2260 days × 4 calls = ~9000 API calls total)
 - Storage: ~120KB/day → ~270MB for full history
 
-### Phase 8: Derived Analytics - Planned
+### Phase 8: Derived Analytics - Parked
 - Computed from existing stored data, no Garmin API calls
-- Candidates: pace zone distribution per run, HR drift within a run, training load trend over time, fitness progression curves, weekly volume summaries
-- Likely a set of `reprocess-*` or `compute-*` commands writing to new derived tables
+- Candidates: pace zone distribution per run, HR drift within a run
+- Parked until the viz app has cross-activity zone pages that make query-time computation too slow
+- Note: HR zone time per activity (`hr_zone_1_s` … `hr_zone_5_s`) is already stored in `activity` — no Phase 8 needed for HR zone trend charts
 
 ### Phase 9: FIT File Sync - Possible
 - Binary FIT files contain richer GPS + elevation data than the REST API
 - Requires `fitparse` library; moderate effort (~1 day)
 - Marginal benefit for running (API already gives ~1Hz data); more useful for cycling power data or full-resolution GPS routes
-- Not prioritised until Phase 7 and 8 are complete
+- Not prioritised until viz app requests it
 
 ---
 
