@@ -13,11 +13,15 @@ garmin-sync auth             # Authenticate with Garmin Connect
 
 ### Activities
 ```bash
-garmin-sync sync-recent-activities [--limit 20]   # Incremental sync (run daily)
-garmin-sync backfill-activities [--page-size 100]  # Full historical backfill (run once)
-garmin-sync sync-activity-details [--limit 50]    # Fetch lap/split detail for recent activities
-garmin-sync backfill-activity-details             # Fetch detail for all activities
+garmin-sync sync-recent-activities [--limit 20]      # Incremental sync (run daily)
+garmin-sync backfill-activities [--page-size 100]     # Full historical backfill (run once)
+garmin-sync sync-activity-details [--limit 50]       # Fetch lap/split detail for recent activities
+garmin-sync backfill-activity-details                # Fetch detail for all activities
+garmin-sync sync-activity-samples [--limit 5]        # Fetch time-series samples for recent activities
+garmin-sync backfill-activity-samples                # Fetch time-series samples for all activities (run once)
 ```
+
+Time-series samples include HR, pace, GPS, cadence, power, altitude, and running dynamics at ~1Hz (up to 2000 samples per activity). The backfill is resumable — already-synced activities are skipped automatically.
 
 ### Daily Health
 ```bash

@@ -41,13 +41,14 @@ All normalised tables can be rebuilt from `raw_payload` using `reprocess-*` comm
 | `sync_runs` | id | Audit log of every sync command run |
 | `sync_cursor` | data_type | Resume state for paginated/date-range syncs |
 
-### Activities (Phase 1 & 2)
+### Activities (Phase 1, 2 & 6)
 | Table | Key | Description |
 |-------|-----|-------------|
 | `activity` | activity_id | Activity summaries with ~50 normalised fields |
 | `activity_detail` | activity_id | Per-activity detail metadata (lap/split counts) |
 | `activity_lap` | (activity_id, lap_index) | Per-lap metrics |
 | `activity_split` | (activity_id, split_index) | Per-split metrics |
+| `activity_sample` | (activity_id, sample_index) | Per-sample time-series: HR, pace, GPS, cadence, power, running dynamics (~1Hz, up to 2000 samples per activity) |
 
 ### Daily Health (Phase 3)
 | Table | Key | Description |
@@ -114,6 +115,12 @@ All normalised tables can be rebuilt from `raw_payload` using `reprocess-*` comm
 - 23 tools covering activities, health, and all performance metrics
 - Delegates entirely to `queries.py`; no SQL in the server itself
 - See MCP Layer section below for details
+
+### Phase 6b: Activity Time-Series Samples ✅ Complete
+- `sync-activity-samples`, `backfill-activity-samples`
+- `activity_sample` table: HR, pace, GPS, cadence, power, altitude, running dynamics per ~1s sample
+- Up to 2000 samples per activity; raw payload stored for reprocessing
+- Wired into `sync-all` with independent `--samples-limit` (default 5)
 
 ### Phase 7: Daily Time-Series Health Data - Next phase
 - Per-day granular health metrics (steps time series, intraday HR, etc.)
