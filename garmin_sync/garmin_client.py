@@ -167,7 +167,7 @@ class GarminClient:
         Fetch a single activity with its laps.
 
         Calls get_activity(activity_id) which returns the activity summary
-        plus a 'laps' list. This is distinct from get_activity_details()
+        plus a 'laps' list. This is distinct from get_activity_samples()
         which returns GPS/HR time-series data.
 
         :param activity_id: Garmin activity ID as a string.
@@ -176,6 +176,21 @@ class GarminClient:
         client = self._ensure_client()
         logger.debug("get_activity_detail(activity_id=%s)", activity_id)
         result = self._rate_limiter.execute(client.get_activity, activity_id)
+        return result if isinstance(result, dict) else {}
+
+    def get_activity_samples(self, activity_id: str) -> dict[str, Any]:
+        """
+        Fetch per-sample time-series data for a single activity.
+
+        Calls get_activity_details(activity_id) which returns metricDescriptors
+        and activityDetailMetrics (HR, speed, cadence, GPS, etc. at ~1Hz).
+
+        :param activity_id: Garmin activity ID as a string.
+        :return: Raw details dict with metricDescriptors and activityDetailMetrics.
+        """
+        client = self._ensure_client()
+        logger.debug("get_activity_samples(activity_id=%s)", activity_id)
+        result = self._rate_limiter.execute(client.get_activity_details, activity_id)
         return result if isinstance(result, dict) else {}
 
     # ------------------------------------------------------------------

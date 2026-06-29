@@ -649,6 +649,34 @@ def get_daily_health_summary(
         (since, until))
 
 
+def get_activity_samples(
+    conn: sqlite3.Connection,
+    activity_id: str,
+    fields: list[str] | None = None,
+) -> list[dict]:
+    """
+    Return per-sample time-series rows for an activity, ordered by sample_index.
+
+    fields: optional list of column names to return (e.g. ["timestamp_utc", "heart_rate", "speed_mps"]).
+    Defaults to all columns except raw_payload_id.
+    """
+    allowed = {
+        "sample_index", "timestamp_utc", "distance_m", "heart_rate",
+        "speed_mps", "cadence", "power_w", "altitude_m", "lat", "lon",
+        "respiration_rate", "ground_contact_ms", "vertical_oscillation_cm",
+        "vertical_ratio_pct", "stride_length_cm",
+    }
+    if fields:
+        cols = ", ".join(c for c in fields if c in allowed) or "*"
+    else:
+        cols = ", ".join(sorted(allowed))
+    return _rows(
+        conn,
+        f"SELECT {cols} FROM activity_sample WHERE activity_id = ? ORDER BY sample_index ASC",  # noqa: S608
+        (activity_id,),
+    )
+
+
 def get_database_status(conn: sqlite3.Connection) -> dict:
     """Row counts for all tables, sync cursors, and recent sync runs."""
     from garmin_sync import repositories as _repo

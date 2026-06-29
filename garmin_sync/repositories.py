@@ -326,6 +326,8 @@ def get_sync_status(conn: sqlite3.Connection) -> dict:
     detail_count = conn.execute("SELECT COUNT(*) FROM activity_detail").fetchone()[0]
     lap_count = conn.execute("SELECT COUNT(*) FROM activity_lap").fetchone()[0]
     split_count = conn.execute("SELECT COUNT(*) FROM activity_split").fetchone()[0]
+    sample_count = conn.execute("SELECT COUNT(*) FROM activity_sample").fetchone()[0]
+    sample_activity_count = conn.execute("SELECT COUNT(DISTINCT activity_id) FROM activity_sample").fetchone()[0]
     daily_summary_count = conn.execute("SELECT COUNT(*) FROM daily_summary").fetchone()[0]
     sleep_count = conn.execute("SELECT COUNT(*) FROM sleep").fetchone()[0]
     hrv_count = conn.execute("SELECT COUNT(*) FROM hrv").fetchone()[0]
@@ -338,6 +340,8 @@ def get_sync_status(conn: sqlite3.Connection) -> dict:
         "activity_detail_count": detail_count,
         "activity_lap_count": lap_count,
         "activity_split_count": split_count,
+        "activity_sample_count": sample_count,
+        "activity_sample_activity_count": sample_activity_count,
         "daily_summary_count": daily_summary_count,
         "sleep_count": sleep_count,
         "hrv_count": hrv_count,
@@ -450,6 +454,67 @@ def update_activity_derived(
     )
     conn.commit()
     return result.rowcount > 0
+
+
+def get_activities_needing_samples(
+    conn: sqlite3.Connection,
+    limit: int | None = None,
+    refresh_existing: bool = False,
+) -> list[str]:
+    """
+    Return activity_ids that need sample sync, ordered newest first.
+
+    refresh_existing=False: only activities with no rows in activity_sample.
+    refresh_existing=True: all activities.
+    """
+    if refresh_existing:
+        sql = "SELECT activity_id FROM activity ORDER BY start_time DESC"
+        params: tuple = ()
+    else:
+        sql = """
+            SELECT a.activity_id FROM activity a
+            WHERE NOT EXISTS (
+                SELECT 1 FROM activity_sample s WHERE s.activity_id = a.activity_id
+            )
+            ORDER BY a.start_time DESC
+        """
+        params = ()
+
+    if limit is not None:
+        sql += " LIMIT ?"
+        params = (limit,)
+
+    rows = conn.execute(sql, params).fetchall()
+    return [r[0] for r in rows]
+
+
+def replace_activity_samples(
+    conn: sqlite3.Connection, activity_id: str, samples: list[dict]
+) -> None:
+    """Delete all existing samples for this activity and insert the new set."""
+    conn.execute("DELETE FROM activity_sample WHERE activity_id=?", (activity_id,))
+    if samples:
+        conn.executemany(
+            """
+            INSERT INTO activity_sample (
+                activity_id, sample_index, timestamp_utc,
+                distance_m, heart_rate, speed_mps, cadence, power_w,
+                altitude_m, lat, lon, respiration_rate,
+                ground_contact_ms, vertical_oscillation_cm,
+                vertical_ratio_pct, stride_length_cm,
+                raw_payload_id
+            ) VALUES (
+                :activity_id, :sample_index, :timestamp_utc,
+                :distance_m, :heart_rate, :speed_mps, :cadence, :power_w,
+                :altitude_m, :lat, :lon, :respiration_rate,
+                :ground_contact_ms, :vertical_oscillation_cm,
+                :vertical_ratio_pct, :stride_length_cm,
+                :raw_payload_id
+            )
+            """,
+            samples,
+        )
+    conn.commit()
 
 
 def replace_activity_splits(

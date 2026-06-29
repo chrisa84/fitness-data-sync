@@ -26,7 +26,7 @@ from garmin_sync.rate_limit import LoginRateLimitedError, RateLimitExceeded
 from garmin_sync import queries, repositories as repo
 from garmin_sync import export as exporter
 from garmin_sync import normalise
-from garmin_sync.sync_engine import ActivitySyncEngine, DetailSyncEngine, HealthSyncEngine, PerformanceSyncEngine, PerformanceDaySyncEngine
+from garmin_sync.sync_engine import ActivitySyncEngine, DetailSyncEngine, HealthSyncEngine, PerformanceSyncEngine, PerformanceDaySyncEngine, SampleSyncEngine
 
 app = typer.Typer(
     name="garmin-sync",
@@ -304,6 +304,92 @@ def cmd_backfill_details(
 
 
 # ---------------------------------------------------------------------------
+# sync-activity-samples / backfill-activity-samples
+# ---------------------------------------------------------------------------
+
+
+@app.command("sync-activity-samples")
+def cmd_sync_samples(
+    limit: Annotated[int, typer.Option("--limit", help="Max activities to fetch samples for")] = 20,
+    refresh_existing: Annotated[bool, typer.Option("--refresh-existing", help="Re-fetch even if samples exist")] = False,
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+    env_file: Annotated[Optional[str], typer.Option("--config")] = None,
+    db_path: Annotated[Optional[str], typer.Option("--db")] = None,
+    log_level: Annotated[Optional[str], typer.Option("--log-level")] = None,
+) -> None:
+    """
+    Fetch per-sample time-series data (HR, pace, GPS, cadence, power) for recent activities.
+
+    Picks the most recent activities that don't yet have sample rows.
+    Use --refresh-existing to re-fetch activities that already have samples.
+    Use --dry-run to call Garmin without writing to the database.
+    """
+    config, conn = _get_config_and_conn(env_file, db_path, log_level)
+
+    if dry_run:
+        typer.echo("[dry-run] Garmin will be called. No database writes will happen.")
+
+    client = GarminClient(config)
+    engine = SampleSyncEngine(config, conn, client, dry_run=dry_run)
+
+    try:
+        result = engine.sync_recent_samples(limit=limit, refresh_existing=refresh_existing)
+        typer.echo(
+            f"Done. fetched={result['fetched']} stored={result['stored']} "
+            f"skipped={result['skipped']} updated={result['updated']}"
+        )
+    except LoginRateLimitedError as exc:
+        typer.echo(f"Rate limited during login: {exc}", err=True)
+        raise typer.Exit(1)
+    except RateLimitExceeded as exc:
+        typer.echo(f"Rate limited during sync (progress saved): {exc}", err=True)
+        raise typer.Exit(1)
+    except Exception as exc:
+        typer.echo(f"Sample sync failed: {exc}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command("backfill-activity-samples")
+def cmd_backfill_samples(
+    refresh_existing: Annotated[bool, typer.Option("--refresh-existing")] = False,
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+    env_file: Annotated[Optional[str], typer.Option("--config")] = None,
+    db_path: Annotated[Optional[str], typer.Option("--db")] = None,
+    log_level: Annotated[Optional[str], typer.Option("--log-level")] = None,
+) -> None:
+    """
+    Fetch time-series samples for all activities without them, newest first.
+
+    Resumable: activities already with sample rows are skipped automatically.
+    Individual failures are logged and skipped; auth/rate-limit errors stop cleanly.
+    Use --refresh-existing to re-fetch activities that already have samples.
+    """
+    config, conn = _get_config_and_conn(env_file, db_path, log_level)
+
+    if dry_run:
+        typer.echo("[dry-run] Garmin will be called. No database writes will happen.")
+
+    client = GarminClient(config)
+    engine = SampleSyncEngine(config, conn, client, dry_run=dry_run)
+
+    try:
+        result = engine.backfill_samples(refresh_existing=refresh_existing)
+        typer.echo(
+            f"Done. fetched={result['fetched']} stored={result['stored']} "
+            f"skipped={result['skipped']} updated={result['updated']}"
+        )
+    except LoginRateLimitedError as exc:
+        typer.echo(f"Rate limited during login: {exc}", err=True)
+        raise typer.Exit(1)
+    except RateLimitExceeded as exc:
+        typer.echo(f"Rate limited (progress saved). Run again to resume: {exc}", err=True)
+        raise typer.Exit(1)
+    except Exception as exc:
+        typer.echo(f"Backfill failed (progress saved). Run again to resume: {exc}", err=True)
+        raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
 # sync-recent-health
 # ---------------------------------------------------------------------------
 
@@ -509,6 +595,7 @@ def cmd_backfill_performance(
 @app.command("sync-all")
 def cmd_sync_all(
     limit: Annotated[int, typer.Option("--limit", help="Number of recent activities and details to fetch")] = 20,
+    samples_limit: Annotated[int, typer.Option("--samples-limit", help="Max activities to fetch time-series samples for")] = 5,
     days: Annotated[int, typer.Option("--days", help="Days window for health and performance sync")] = 7,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
     env_file: Annotated[Optional[str], typer.Option("--config")] = None,
@@ -518,14 +605,15 @@ def cmd_sync_all(
     """
     Incremental sync of all data types in one command.
 
-    Runs in order: activity summaries, activity details, health data,
-    performance ranges, performance daily metrics, then a local derive pass
-    that populates training_load, HR zones, and running dynamics (including
-    L/R ground-contact balance) from the freshly-synced raw payloads.
+    Runs in order: activity summaries, activity details, activity time-series
+    samples (HR/pace/GPS/cadence), health data, performance ranges, performance
+    daily metrics, then a local derive pass that populates training_load, HR
+    zones, and running dynamics from the freshly-synced raw payloads.
 
     Equivalent to running sync-recent-activities, sync-activity-details,
-    sync-recent-health, sync-performance-ranges, sync-performance, and
-    reprocess-activity-derived in sequence with matching defaults.
+    sync-activity-samples, sync-recent-health, sync-performance-ranges,
+    sync-performance, and reprocess-activity-derived in sequence with matching
+    defaults.
 
     Stops immediately on rate-limit or auth errors.
     Use --dry-run to call Garmin without writing to the database (the derive
@@ -545,6 +633,7 @@ def cmd_sync_all(
     steps: list[tuple[str, object]] = [
         ("activities", lambda: ActivitySyncEngine(config, conn, client, dry_run=dry_run).sync_recent_activities(limit=limit)),
         ("activity-details", lambda: DetailSyncEngine(config, conn, client, dry_run=dry_run).sync_recent_details(limit=limit)),
+        ("activity-samples", lambda: SampleSyncEngine(config, conn, client, dry_run=dry_run).sync_recent_samples(limit=samples_limit)),
         ("health", lambda: HealthSyncEngine(config, conn, client, dry_run=dry_run).sync_recent_health(days=days)),
         ("performance-ranges", lambda: PerformanceSyncEngine(config, conn, client, dry_run=dry_run).sync_performance_ranges(from_date, to_date)),
         ("performance", lambda: PerformanceDaySyncEngine(config, conn, client, dry_run=dry_run).sync_performance(from_date, to_date)),

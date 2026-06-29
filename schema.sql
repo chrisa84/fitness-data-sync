@@ -240,6 +240,29 @@ CREATE TABLE IF NOT EXISTS activity (
     updated_at                     TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS activity_sample (
+    activity_id             TEXT NOT NULL,
+    sample_index            INTEGER NOT NULL,
+    timestamp_utc           TEXT,
+    distance_m              REAL,
+    heart_rate              INTEGER,
+    speed_mps               REAL,
+    cadence                 INTEGER,
+    power_w                 REAL,
+    altitude_m              REAL,
+    lat                     REAL,
+    lon                     REAL,
+    respiration_rate        REAL,
+    ground_contact_ms       REAL,
+    vertical_oscillation_cm REAL,
+    vertical_ratio_pct      REAL,
+    stride_length_cm        REAL,
+    raw_payload_id          INTEGER NOT NULL REFERENCES raw_payload(id),
+    PRIMARY KEY (activity_id, sample_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_sample_activity_id ON activity_sample(activity_id);
+
 -- ---------------------------------------------------------------------------
 -- Performance / training metrics (Phase 5b)
 -- ---------------------------------------------------------------------------

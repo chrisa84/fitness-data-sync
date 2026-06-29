@@ -496,6 +496,124 @@ def normalise_activity_splits(
     return result
 
 
+_SAMPLE_METRIC_MAP: dict[str, str] = {
+    "directTimestamp": "ts_ms",
+    "directLatitude": "lat",
+    "directLongitude": "lon",
+    "directAltitude": "altitude_m",
+    "directHeartRate": "heart_rate",
+    "directSpeed": "speed_mps",
+    "directCadence": "cadence",
+    "directPower": "power_w",
+    "directRespirationRate": "respiration_rate",
+    "directDistance": "distance_m",
+    "directGroundContactTime": "ground_contact_ms",
+    "directVerticalOscillation": "vertical_oscillation_cm",
+    "directVerticalRatio": "vertical_ratio_pct",
+    "directStrideLength": "stride_length_cm",
+    # alternate key names observed on some devices/activity types
+    "latitude": "lat",
+    "longitude": "lon",
+    "altitude": "altitude_m",
+    "heartRate": "heart_rate",
+    "speed": "speed_mps",
+    "cadence": "cadence",
+    "power": "power_w",
+}
+
+_INT_SAMPLE_FIELDS = {"heart_rate", "cadence"}
+
+
+def normalise_activity_samples(
+    raw: dict, activity_id: str, raw_payload_id: int
+) -> list[dict]:
+    """
+    Extract per-sample time-series from a get_activity_details() response.
+
+    Uses metricDescriptors to map array indices to field names, then converts
+    each activityDetailMetrics entry to a flat row dict. GPS coordinates are
+    taken from the metrics array if present (directLatitude/Longitude), falling
+    back to geoPolylineDTO by index when the polyline has the same length.
+
+    Returns an empty list if there are no chart samples.
+    """
+    descriptors = raw.get("metricDescriptors") or []
+    chart_data = raw.get("activityDetailMetrics") or []
+    polyline = (raw.get("geoPolylineDTO") or {}).get("polyline") or []
+
+    if not chart_data:
+        return []
+
+    idx_to_field: dict[int, str] = {}
+    for desc in descriptors:
+        if not isinstance(desc, dict):
+            continue
+        key = desc.get("key") or ""
+        idx = desc.get("metricsIndex")
+        if idx is None:
+            continue
+        mapped = _SAMPLE_METRIC_MAP.get(key)
+        if mapped:
+            idx_to_field[int(idx)] = mapped
+
+    use_polyline_gps = (
+        not any(f in idx_to_field.values() for f in ("lat", "lon"))
+        and len(polyline) == len(chart_data)
+    )
+
+    result = []
+    for i, entry in enumerate(chart_data):
+        if not isinstance(entry, dict):
+            continue
+
+        metrics = entry.get("metrics") or []
+        ts_ms: object = None
+
+        row: dict = {
+            "activity_id": activity_id,
+            "sample_index": i,
+            "timestamp_utc": entry.get("startGMT"),
+            "distance_m": None,
+            "heart_rate": None,
+            "speed_mps": None,
+            "cadence": None,
+            "power_w": None,
+            "altitude_m": None,
+            "lat": None,
+            "lon": None,
+            "respiration_rate": None,
+            "ground_contact_ms": None,
+            "vertical_oscillation_cm": None,
+            "vertical_ratio_pct": None,
+            "stride_length_cm": None,
+            "raw_payload_id": raw_payload_id,
+        }
+
+        for idx, field in idx_to_field.items():
+            if idx >= len(metrics):
+                continue
+            val = metrics[idx]
+            if field == "ts_ms":
+                ts_ms = val
+            elif field in _INT_SAMPLE_FIELDS:
+                row[field] = _safe_int(val)
+            else:
+                row[field] = _safe_float(val)
+
+        if ts_ms is not None:
+            row["timestamp_utc"] = _ms_to_iso(ts_ms)
+
+        if use_polyline_gps and isinstance(polyline[i], dict):
+            row["lat"] = _safe_float(polyline[i].get("lat"))
+            row["lon"] = _safe_float(polyline[i].get("lon"))
+            if row["altitude_m"] is None:
+                row["altitude_m"] = _safe_float(polyline[i].get("altitude"))
+
+        result.append(row)
+
+    return result
+
+
 def normalise_daily_summary_derived(raw: dict) -> dict:
     """
     Extract derived fields from daily_summary raw payload.

@@ -889,3 +889,174 @@ class PerformanceDaySyncEngine:
                 stats.fetched += 1
         logger.info("reprocess_performance_derived done: fetched=%d stored=%d", stats.fetched, stats.stored)
         return stats.to_result()
+
+
+# ---------------------------------------------------------------------------
+# Activity sample sync (time-series: HR, pace, GPS, cadence, etc.)
+# ---------------------------------------------------------------------------
+
+_SAMPLES_DATA_TYPE = "activity_samples"
+
+
+def _process_one_samples(
+    conn: sqlite3.Connection,
+    client: GarminClient,
+    activity_id: str,
+    stats: _Stats,
+    dry_run: bool,
+) -> None:
+    """Fetch and store time-series samples for a single activity."""
+    raw = client.get_activity_samples(activity_id)
+
+    if not raw:
+        logger.warning("Empty samples response for activity %s, skipping.", activity_id)
+        stats.skipped += 1
+        return
+
+    payload_json = _canonical_json(raw)
+    payload_hash = _sha256(payload_json)
+
+    if dry_run:
+        logger.info("[dry-run] would store samples for activity %s", activity_id)
+        stats.fetched += 1
+        return
+
+    raw_id, was_changed = repo.upsert_raw_payload_by_garmin_id(
+        conn,
+        source="garmin_connect",
+        data_type=_SAMPLES_DATA_TYPE,
+        garmin_id=activity_id,
+        payload_json=payload_json,
+        payload_hash=payload_hash,
+    )
+
+    stats.fetched += 1
+
+    if was_changed:
+        samples = normalise.normalise_activity_samples(raw, activity_id, raw_id)
+        repo.replace_activity_samples(conn, activity_id, samples)
+        stats.stored += 1
+        stats.updated += 1
+        logger.debug("Stored %d samples for activity %s.", len(samples), activity_id)
+    else:
+        stats.skipped += 1
+        logger.debug("Samples for activity %s unchanged (hash match), skipped.", activity_id)
+
+
+class SampleSyncEngine:
+    def __init__(
+        self,
+        config: Config,
+        conn: sqlite3.Connection,
+        client: GarminClient,
+        dry_run: bool = False,
+    ) -> None:
+        self._config = config
+        self._conn = conn
+        self._client = client
+        self._dry_run = dry_run
+
+    def sync_recent_samples(
+        self, limit: int = 20, refresh_existing: bool = False
+    ) -> SyncResult:
+        """
+        Fetch time-series samples for up to `limit` activities.
+
+        Picks the most recent activities that have no sample rows yet.
+        --refresh-existing: re-fetch even if samples exist (hash change detection applies).
+        """
+        activity_ids = repo.get_activities_needing_samples(
+            self._conn, limit=limit, refresh_existing=refresh_existing
+        )
+        logger.info(
+            "sync-activity-samples: %d activities to process (limit=%d, refresh=%s)",
+            len(activity_ids), limit, refresh_existing,
+        )
+
+        stats = _Stats()
+        run_id = repo.create_sync_run(self._conn, "sync-activity-samples")
+
+        try:
+            for activity_id in activity_ids:
+                try:
+                    _process_one_samples(
+                        self._conn, self._client, activity_id, stats, self._dry_run
+                    )
+                    if not self._dry_run:
+                        repo.update_cursor(
+                            self._conn, _SAMPLES_DATA_TYPE,
+                            last_successful_activity_id=activity_id,
+                        )
+                except Exception as exc:
+                    from garmin_sync.rate_limit import LoginRateLimitedError, RateLimitExceeded
+                    if isinstance(exc, (LoginRateLimitedError, RateLimitExceeded)):
+                        raise
+                    logger.warning(
+                        "Sample fetch failed for activity %s: %s — continuing.", activity_id, exc
+                    )
+                    stats.skipped += 1
+
+            repo.finish_sync_run(self._conn, run_id, "completed")
+            logger.info(
+                "sync-activity-samples done: fetched=%d stored=%d skipped=%d updated=%d",
+                stats.fetched, stats.stored, stats.skipped, stats.updated,
+            )
+        except Exception as exc:
+            repo.finish_sync_run(self._conn, run_id, "failed", error=str(exc))
+            raise
+
+        return stats.to_result()
+
+    def backfill_samples(self, refresh_existing: bool = False) -> SyncResult:
+        """
+        Fetch time-series samples for all activities without them, newest first.
+
+        Resumable: activities already with sample rows are skipped.
+        Individual fetch failures are logged and skipped.
+        Auth and rate-limit errors stop the run; progress is preserved.
+        """
+        activity_ids = repo.get_activities_needing_samples(
+            self._conn, limit=None, refresh_existing=refresh_existing
+        )
+        total = len(activity_ids)
+        logger.info(
+            "backfill-activity-samples: %d activities to process (refresh=%s)",
+            total, refresh_existing,
+        )
+
+        stats = _Stats()
+        run_id = repo.create_sync_run(self._conn, "backfill-activity-samples")
+
+        try:
+            for i, activity_id in enumerate(activity_ids, 1):
+                if i % 50 == 0 or i == total:
+                    logger.info("Progress: %d/%d activities processed.", i, total)
+
+                try:
+                    _process_one_samples(
+                        self._conn, self._client, activity_id, stats, self._dry_run
+                    )
+                    if not self._dry_run:
+                        repo.update_cursor(
+                            self._conn, _SAMPLES_DATA_TYPE,
+                            last_successful_activity_id=activity_id,
+                        )
+                except Exception as exc:
+                    from garmin_sync.rate_limit import LoginRateLimitedError, RateLimitExceeded
+                    if isinstance(exc, (LoginRateLimitedError, RateLimitExceeded)):
+                        raise
+                    logger.warning(
+                        "Sample fetch failed for activity %s: %s — continuing.", activity_id, exc
+                    )
+                    stats.skipped += 1
+
+            repo.finish_sync_run(self._conn, run_id, "completed")
+            logger.info(
+                "backfill-activity-samples done: fetched=%d stored=%d skipped=%d updated=%d",
+                stats.fetched, stats.stored, stats.skipped, stats.updated,
+            )
+        except Exception as exc:
+            repo.finish_sync_run(self._conn, run_id, "failed", error=str(exc))
+            raise
+
+        return stats.to_result()
