@@ -117,14 +117,28 @@ All normalised tables can be rebuilt from `raw_payload` using `reprocess-*` comm
 - See MCP Layer section below for details
 
 ### Phase 6b: Activity Time-Series Samples ✅ Complete
-- `sync-activity-samples`, `backfill-activity-samples`
+- `sync-activity-samples`, `backfill-activity-samples`, `reprocess-activity-samples`
 - `activity_sample` table: HR, pace, GPS, cadence, power, altitude, running dynamics per ~1s sample
-- Up to 2000 samples per activity; raw payload stored for reprocessing
+- Fields: `timestamp_utc`, `distance_m`, `heart_rate`, `speed_mps`, `cadence`, `power_w`, `altitude_m`, `lat`, `lon`, `respiration_rate`, `ground_contact_ms`, `ground_contact_balance_left`, `vertical_oscillation_cm`, `vertical_ratio_pct`, `stride_length_cm`
+- Up to 2000 samples per activity (Garmin downsamples longer activities); raw payload stored for reprocessing
 - Wired into `sync-all` with independent `--samples-limit` (default 5)
 
-### Phase 7: Daily Time-Series Health Data - Next phase
-- Per-day granular health metrics (steps time series, intraday HR, etc.)
-- Not yet implemented
+### Phase 7: Daily Time-Series Health Data - Planned
+- Per-day intraday metrics: per-minute HR, per-15-min stress, per-minute steps
+- New tables: `intraday_heart_rate`, `intraday_stress`, `intraday_steps`
+- ~3 new Garmin endpoints, date-keyed, similar pattern to Phase 3
+- Useful for daily dashboard charts (HR during commute, stress peaks, active vs sedentary patterns)
+
+### Phase 8: Derived Analytics - Planned
+- Computed from existing stored data, no Garmin API calls
+- Candidates: pace zone distribution per run, HR drift within a run, training load trend over time, fitness progression curves, weekly volume summaries
+- Likely a set of `reprocess-*` or `compute-*` commands writing to new derived tables
+
+### Phase 9: FIT File Sync - Possible
+- Binary FIT files contain richer GPS + elevation data than the REST API
+- Requires `fitparse` library; moderate effort (~1 day)
+- Marginal benefit for running (API already gives ~1Hz data); more useful for cycling power data or full-resolution GPS routes
+- Not prioritised until Phase 7 and 8 are complete
 
 ---
 
