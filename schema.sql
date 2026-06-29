@@ -253,11 +253,12 @@ CREATE TABLE IF NOT EXISTS activity_sample (
     lat                     REAL,
     lon                     REAL,
     respiration_rate        REAL,
-    ground_contact_ms       REAL,
-    vertical_oscillation_cm REAL,
-    vertical_ratio_pct      REAL,
-    stride_length_cm        REAL,
-    raw_payload_id          INTEGER NOT NULL REFERENCES raw_payload(id),
+    ground_contact_ms           REAL,
+    ground_contact_balance_left REAL,
+    vertical_oscillation_cm     REAL,
+    vertical_ratio_pct          REAL,
+    stride_length_cm            REAL,
+    raw_payload_id              INTEGER NOT NULL REFERENCES raw_payload(id),
     PRIMARY KEY (activity_id, sample_index)
 );
 

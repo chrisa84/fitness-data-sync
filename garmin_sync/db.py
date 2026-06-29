@@ -30,6 +30,10 @@ _DAILY_SUMMARY_DERIVED_COLS = [
     ("resting_hr_7d_avg", "REAL"),
 ]
 
+_ACTIVITY_SAMPLE_NEW_COLS = [
+    ("ground_contact_balance_left", "REAL"),
+]
+
 _TRAINING_READINESS_NEW_COLS = [
     ("sleep_factor_pct", "INTEGER"),
     ("stress_factor_pct", "INTEGER"),
@@ -61,6 +65,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(schema_sql)
     conn.commit()
     _migrate_add_columns(conn, "activity", _ACTIVITY_DERIVED_COLS)
+    _migrate_add_columns(conn, "activity_sample", _ACTIVITY_SAMPLE_NEW_COLS)
     _migrate_add_columns(conn, "daily_summary", _DAILY_SUMMARY_DERIVED_COLS)
     # Rename recovery_time_h → recovery_time_min if old column exists.
     tr_cols = {row[1] for row in conn.execute("PRAGMA table_info(training_readiness)").fetchall()}

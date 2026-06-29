@@ -500,15 +500,15 @@ def replace_activity_samples(
                 activity_id, sample_index, timestamp_utc,
                 distance_m, heart_rate, speed_mps, cadence, power_w,
                 altitude_m, lat, lon, respiration_rate,
-                ground_contact_ms, vertical_oscillation_cm,
-                vertical_ratio_pct, stride_length_cm,
+                ground_contact_ms, ground_contact_balance_left,
+                vertical_oscillation_cm, vertical_ratio_pct, stride_length_cm,
                 raw_payload_id
             ) VALUES (
                 :activity_id, :sample_index, :timestamp_utc,
                 :distance_m, :heart_rate, :speed_mps, :cadence, :power_w,
                 :altitude_m, :lat, :lon, :respiration_rate,
-                :ground_contact_ms, :vertical_oscillation_cm,
-                :vertical_ratio_pct, :stride_length_cm,
+                :ground_contact_ms, :ground_contact_balance_left,
+                :vertical_oscillation_cm, :vertical_ratio_pct, :stride_length_cm,
                 :raw_payload_id
             )
             """,

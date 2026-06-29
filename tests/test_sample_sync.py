@@ -180,7 +180,8 @@ def test_replace_activity_samples_idempotent(db_conn: sqlite3.Connection):
          "distance_m": None, "heart_rate": 150, "speed_mps": 3.0,
          "cadence": None, "power_w": None, "altitude_m": None,
          "lat": None, "lon": None, "respiration_rate": None,
-         "ground_contact_ms": None, "vertical_oscillation_cm": None,
+         "ground_contact_ms": None, "ground_contact_balance_left": None,
+         "vertical_oscillation_cm": None,
          "vertical_ratio_pct": None, "stride_length_cm": None,
          "raw_payload_id": raw_id}
         for i in range(3)

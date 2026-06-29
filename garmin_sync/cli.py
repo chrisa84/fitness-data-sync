@@ -1450,6 +1450,36 @@ def cmd_query_performance_summary(
 
 
 # ---------------------------------------------------------------------------
+# reprocess-activity-samples
+# ---------------------------------------------------------------------------
+
+
+@app.command("reprocess-activity-samples")
+def cmd_reprocess_activity_samples(
+    env_file: Annotated[Optional[str], typer.Option("--config")] = None,
+    db_path: Annotated[Optional[str], typer.Option("--db")] = None,
+    log_level: Annotated[Optional[str], typer.Option("--log-level")] = None,
+) -> None:
+    """Re-normalise activity_sample rows from stored raw_payload. No Garmin calls."""
+    conn = _get_conn_only(env_file, db_path, log_level)
+
+    rows = conn.execute(
+        "SELECT garmin_id, payload_json, id FROM raw_payload WHERE data_type='activity_samples'"
+    ).fetchall()
+
+    processed = total_samples = 0
+    for row in rows:
+        activity_id = row["garmin_id"]
+        raw = _json.loads(row["payload_json"])
+        samples = normalise.normalise_activity_samples(raw, activity_id, row["id"])
+        repo.replace_activity_samples(conn, activity_id, samples)
+        processed += 1
+        total_samples += len(samples)
+
+    typer.echo(f"Activities reprocessed: {processed}  samples written: {total_samples}")
+
+
+# ---------------------------------------------------------------------------
 # reprocess-activity-derived
 # ---------------------------------------------------------------------------
 
@@ -1790,6 +1820,7 @@ def cmd_status(
     typer.echo(f"Activity details:      {status['activity_detail_count']}")
     typer.echo(f"Activity laps:         {status['activity_lap_count']}")
     typer.echo(f"Activity splits:       {status['activity_split_count']}")
+    typer.echo(f"Activity samples:      {status['activity_sample_count']} samples across {status['activity_sample_activity_count']} activities")
     typer.echo(f"Daily summaries:       {status['daily_summary_count']}")
     typer.echo(f"Sleep records:         {status['sleep_count']}")
     typer.echo(f"HRV records:           {status['hrv_count']}")
