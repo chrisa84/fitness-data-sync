@@ -60,6 +60,14 @@ All normalised tables can be rebuilt from `raw_payload` using `reprocess-*` comm
 | `body_battery` | date | Body battery charged/drained |
 | `heart_rate` | date | Resting, min, max HR |
 
+### Intraday Health Time-Series (Phase 7)
+| Table | Key | Description |
+|-------|-----|-------------|
+| `intraday_heart_rate` | (date, timestamp_utc) | Per-minute HR all day (~1440 rows/day) |
+| `intraday_stress` | (date, timestamp_utc) | Per-~4-min stress level all day |
+| `intraday_steps` | (date, timestamp_utc) | Per-15-min step counts and activity level |
+| `intraday_respiration` | (date, timestamp_utc) | Per-sample respiration rate (breaths/min) |
+
 ### Performance Metrics (Phase 5b)
 | Table | Key | Description |
 |-------|-----|-------------|
@@ -123,11 +131,13 @@ All normalised tables can be rebuilt from `raw_payload` using `reprocess-*` comm
 - Up to 2000 samples per activity (Garmin downsamples longer activities); raw payload stored for reprocessing
 - Wired into `sync-all` with independent `--samples-limit` (default 5)
 
-### Phase 7: Daily Time-Series Health Data - Planned
-- Per-day intraday metrics: per-minute HR, per-15-min stress, per-minute steps
-- New tables: `intraday_heart_rate`, `intraday_stress`, `intraday_steps`
-- ~3 new Garmin endpoints, date-keyed, similar pattern to Phase 3
-- Useful for daily dashboard charts (HR during commute, stress peaks, active vs sedentary patterns)
+### Phase 7: Intraday Health Time-Series ✅ Complete
+- `sync-intraday`, `backfill-intraday`
+- `intraday_heart_rate` (per-minute HR), `intraday_stress` (per-~4min), `intraday_steps` (per-15min), `intraday_respiration`
+- 4 endpoints: `get_heart_rates`, `get_all_day_stress`, `get_steps_data`, `get_respiration_data`
+- Wired into `sync-all` alongside health sync, uses same `--days` window
+- Backfill: `backfill-intraday --from-date 2020-01-01` (~2260 days × 4 calls = ~9000 API calls total)
+- Storage: ~120KB/day → ~270MB for full history
 
 ### Phase 8: Derived Analytics - Planned
 - Computed from existing stored data, no Garmin API calls

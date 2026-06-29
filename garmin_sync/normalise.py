@@ -192,6 +192,111 @@ def normalise_heart_rate(raw: dict, date_str: str, raw_payload_id: int) -> dict 
     }
 
 
+# ---------------------------------------------------------------------------
+# Intraday health time-series normalisation (Phase 7)
+# ---------------------------------------------------------------------------
+
+
+def normalise_intraday_heart_rate(raw: dict, date_str: str, raw_payload_id: int) -> list[dict]:
+    """Extract per-minute HR rows from get_heart_rates() response.
+
+    heartRateValues is a list of [timestamp_ms, bpm] pairs. Null bpm values are
+    kept (sleep/no-wear gaps) so the time axis stays continuous.
+    """
+    values = raw.get("heartRateValues") or []
+    rows = []
+    for entry in values:
+        if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+            continue
+        ts_ms, bpm = entry[0], entry[1]
+        ts = _ms_to_iso(ts_ms)
+        if ts is None:
+            continue
+        rows.append({
+            "date": date_str,
+            "timestamp_utc": ts,
+            "heart_rate": _safe_int(bpm),
+            "raw_payload_id": raw_payload_id,
+        })
+    return rows
+
+
+def normalise_intraday_stress(raw: dict, date_str: str, raw_payload_id: int) -> list[dict]:
+    """Extract per-sample stress rows from get_all_day_stress() response.
+
+    stressValuesArray is a list of [timestamp_ms, stress_level] pairs.
+    stress_level of -1 or -2 means no reading (rest/unmeasured) — kept as NULL.
+    """
+    values = raw.get("stressValuesArray") or []
+    rows = []
+    for entry in values:
+        if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+            continue
+        ts_ms, level = entry[0], entry[1]
+        ts = _ms_to_iso(ts_ms)
+        if ts is None:
+            continue
+        stress = _safe_int(level)
+        if stress is not None and stress < 0:
+            stress = None
+        rows.append({
+            "date": date_str,
+            "timestamp_utc": ts,
+            "stress_level": stress,
+            "raw_payload_id": raw_payload_id,
+        })
+    return rows
+
+
+def normalise_intraday_steps(raw: list, date_str: str, raw_payload_id: int) -> list[dict]:
+    """Extract per-block step rows from get_steps_data() response.
+
+    Each entry is a dict with startGMT, endGMT, steps, primaryActivityLevel.
+    startGMT is a local-time string like '2024-03-15 06:30:00' — stored as-is
+    since we don't have timezone offset in the payload.
+    """
+    if not isinstance(raw, list):
+        return []
+    rows = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        start_gmt = entry.get("startGMT") or entry.get("startGmt")
+        if not start_gmt:
+            continue
+        rows.append({
+            "date": date_str,
+            "timestamp_utc": str(start_gmt),
+            "steps": _safe_int(entry.get("steps")),
+            "activity_level": entry.get("primaryActivityLevel"),
+            "raw_payload_id": raw_payload_id,
+        })
+    return rows
+
+
+def normalise_intraday_respiration(raw: dict, date_str: str, raw_payload_id: int) -> list[dict]:
+    """Extract per-sample respiration rows from get_respiration_data() response.
+
+    respirationValues is a list of [timestamp_ms, breaths_per_min] pairs.
+    """
+    values = raw.get("respirationValues") or []
+    rows = []
+    for entry in values:
+        if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+            continue
+        ts_ms, bpm = entry[0], entry[1]
+        ts = _ms_to_iso(ts_ms)
+        if ts is None:
+            continue
+        rows.append({
+            "date": date_str,
+            "timestamp_utc": ts,
+            "breaths_per_min": _safe_float(bpm),
+            "raw_payload_id": raw_payload_id,
+        })
+    return rows
+
+
 def normalise_activity(raw: dict) -> dict | None:
     """
     Map a Garmin activity summary dict to the activity table row dict.

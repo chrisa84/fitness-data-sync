@@ -356,6 +356,11 @@ def get_sync_status(conn: sqlite3.Connection) -> dict:
         "training_readiness_count": conn.execute("SELECT COUNT(*) FROM training_readiness").fetchone()[0],
         "max_metrics_count":        conn.execute("SELECT COUNT(*) FROM max_metrics").fetchone()[0],
         "fitness_age_count":        conn.execute("SELECT COUNT(*) FROM fitness_age").fetchone()[0],
+        "intraday_hr_count": conn.execute("SELECT COUNT(*) FROM intraday_heart_rate").fetchone()[0],
+        "intraday_hr_date_count": conn.execute("SELECT COUNT(DISTINCT date) FROM intraday_heart_rate").fetchone()[0],
+        "intraday_stress_count": conn.execute("SELECT COUNT(*) FROM intraday_stress").fetchone()[0],
+        "intraday_steps_count": conn.execute("SELECT COUNT(*) FROM intraday_steps").fetchone()[0],
+        "intraday_respiration_count": conn.execute("SELECT COUNT(*) FROM intraday_respiration").fetchone()[0],
         "raw_payload_count": raw_count,
         "cursors": cursor_info,
         "recent_runs": run_info,
@@ -559,6 +564,59 @@ def update_daily_summary_derived(
     )
     conn.commit()
     return result.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Intraday health time-series tables (Phase 7)
+# ---------------------------------------------------------------------------
+
+
+def replace_intraday_heart_rate(conn: sqlite3.Connection, date_str: str, rows: list[dict]) -> None:
+    """Replace all intraday HR rows for a date with a fresh set."""
+    conn.execute("DELETE FROM intraday_heart_rate WHERE date=?", (date_str,))
+    if rows:
+        conn.executemany(
+            "INSERT INTO intraday_heart_rate (date, timestamp_utc, heart_rate, raw_payload_id)"
+            " VALUES (:date, :timestamp_utc, :heart_rate, :raw_payload_id)",
+            rows,
+        )
+    conn.commit()
+
+
+def replace_intraday_stress(conn: sqlite3.Connection, date_str: str, rows: list[dict]) -> None:
+    """Replace all intraday stress rows for a date with a fresh set."""
+    conn.execute("DELETE FROM intraday_stress WHERE date=?", (date_str,))
+    if rows:
+        conn.executemany(
+            "INSERT INTO intraday_stress (date, timestamp_utc, stress_level, raw_payload_id)"
+            " VALUES (:date, :timestamp_utc, :stress_level, :raw_payload_id)",
+            rows,
+        )
+    conn.commit()
+
+
+def replace_intraday_steps(conn: sqlite3.Connection, date_str: str, rows: list[dict]) -> None:
+    """Replace all intraday steps rows for a date with a fresh set."""
+    conn.execute("DELETE FROM intraday_steps WHERE date=?", (date_str,))
+    if rows:
+        conn.executemany(
+            "INSERT INTO intraday_steps (date, timestamp_utc, steps, activity_level, raw_payload_id)"
+            " VALUES (:date, :timestamp_utc, :steps, :activity_level, :raw_payload_id)",
+            rows,
+        )
+    conn.commit()
+
+
+def replace_intraday_respiration(conn: sqlite3.Connection, date_str: str, rows: list[dict]) -> None:
+    """Replace all intraday respiration rows for a date with a fresh set."""
+    conn.execute("DELETE FROM intraday_respiration WHERE date=?", (date_str,))
+    if rows:
+        conn.executemany(
+            "INSERT INTO intraday_respiration (date, timestamp_utc, breaths_per_min, raw_payload_id)"
+            " VALUES (:date, :timestamp_utc, :breaths_per_min, :raw_payload_id)",
+            rows,
+        )
+    conn.commit()
 
 
 # ---------------------------------------------------------------------------

@@ -265,6 +265,47 @@ CREATE TABLE IF NOT EXISTS activity_sample (
 CREATE INDEX IF NOT EXISTS idx_activity_sample_activity_id ON activity_sample(activity_id);
 
 -- ---------------------------------------------------------------------------
+-- Intraday health time-series (Phase 7)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS intraday_heart_rate (
+    date           TEXT NOT NULL,
+    timestamp_utc  TEXT NOT NULL,
+    heart_rate     INTEGER,
+    raw_payload_id INTEGER NOT NULL REFERENCES raw_payload(id),
+    PRIMARY KEY (date, timestamp_utc)
+);
+CREATE INDEX IF NOT EXISTS idx_intraday_hr_date ON intraday_heart_rate(date);
+
+CREATE TABLE IF NOT EXISTS intraday_stress (
+    date           TEXT NOT NULL,
+    timestamp_utc  TEXT NOT NULL,
+    stress_level   INTEGER,
+    raw_payload_id INTEGER NOT NULL REFERENCES raw_payload(id),
+    PRIMARY KEY (date, timestamp_utc)
+);
+CREATE INDEX IF NOT EXISTS idx_intraday_stress_date ON intraday_stress(date);
+
+CREATE TABLE IF NOT EXISTS intraday_steps (
+    date           TEXT NOT NULL,
+    timestamp_utc  TEXT NOT NULL,
+    steps          INTEGER,
+    activity_level TEXT,
+    raw_payload_id INTEGER NOT NULL REFERENCES raw_payload(id),
+    PRIMARY KEY (date, timestamp_utc)
+);
+CREATE INDEX IF NOT EXISTS idx_intraday_steps_date ON intraday_steps(date);
+
+CREATE TABLE IF NOT EXISTS intraday_respiration (
+    date            TEXT NOT NULL,
+    timestamp_utc   TEXT NOT NULL,
+    breaths_per_min REAL,
+    raw_payload_id  INTEGER NOT NULL REFERENCES raw_payload(id),
+    PRIMARY KEY (date, timestamp_utc)
+);
+CREATE INDEX IF NOT EXISTS idx_intraday_respiration_date ON intraday_respiration(date);
+
+-- ---------------------------------------------------------------------------
 -- Performance / training metrics (Phase 5b)
 -- ---------------------------------------------------------------------------
 

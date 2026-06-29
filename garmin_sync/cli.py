@@ -26,7 +26,7 @@ from garmin_sync.rate_limit import LoginRateLimitedError, RateLimitExceeded
 from garmin_sync import queries, repositories as repo
 from garmin_sync import export as exporter
 from garmin_sync import normalise
-from garmin_sync.sync_engine import ActivitySyncEngine, DetailSyncEngine, HealthSyncEngine, PerformanceSyncEngine, PerformanceDaySyncEngine, SampleSyncEngine
+from garmin_sync.sync_engine import ActivitySyncEngine, DetailSyncEngine, HealthSyncEngine, IntradaySyncEngine, PerformanceSyncEngine, PerformanceDaySyncEngine, SampleSyncEngine
 
 app = typer.Typer(
     name="garmin-sync",
@@ -390,6 +390,93 @@ def cmd_backfill_samples(
 
 
 # ---------------------------------------------------------------------------
+# sync-intraday / backfill-intraday
+# ---------------------------------------------------------------------------
+
+
+@app.command("sync-intraday")
+def cmd_sync_intraday(
+    days: Annotated[int, typer.Option("--days", help="Number of recent days to sync")] = 7,
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+    env_file: Annotated[Optional[str], typer.Option("--config")] = None,
+    db_path: Annotated[Optional[str], typer.Option("--db")] = None,
+    log_level: Annotated[Optional[str], typer.Option("--log-level")] = None,
+) -> None:
+    """
+    Fetch intraday health time-series for the last N days.
+
+    Syncs per-minute HR, per-sample stress, per-15-min steps, and per-sample
+    respiration rate. Always re-syncs recent days — Garmin corrects data retroactively.
+    Use --dry-run to call Garmin without writing to the database.
+    """
+    config, conn = _get_config_and_conn(env_file, db_path, log_level)
+
+    if dry_run:
+        typer.echo("[dry-run] Garmin will be called. No database writes will happen.")
+
+    client = GarminClient(config)
+    engine = IntradaySyncEngine(config, conn, client, dry_run=dry_run)
+
+    try:
+        result = engine.sync_intraday(days=days)
+        typer.echo(
+            f"Done. fetched={result['fetched']} stored={result['stored']} "
+            f"skipped={result['skipped']} updated={result['updated']}"
+        )
+    except LoginRateLimitedError as exc:
+        typer.echo(f"Rate limited during login: {exc}", err=True)
+        raise typer.Exit(1)
+    except RateLimitExceeded as exc:
+        typer.echo(f"Rate limited: {exc}", err=True)
+        raise typer.Exit(1)
+    except Exception as exc:
+        typer.echo(f"Intraday sync failed: {exc}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command("backfill-intraday")
+def cmd_backfill_intraday(
+    from_date: Annotated[str, typer.Option("--from-date", help="Start date YYYY-MM-DD")] = "2020-01-01",
+    to_date: Annotated[Optional[str], typer.Option("--to-date", help="End date YYYY-MM-DD (default: today)")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+    env_file: Annotated[Optional[str], typer.Option("--config")] = None,
+    db_path: Annotated[Optional[str], typer.Option("--db")] = None,
+    log_level: Annotated[Optional[str], typer.Option("--log-level")] = None,
+) -> None:
+    """
+    Backfill intraday health time-series for a date range, newest-first.
+
+    Resumable: if interrupted, rerunning continues from where it left off.
+    Use --from-date to set the earliest date to backfill (default: 2020-01-01).
+    Use --to-date to set the most recent date (default: today).
+    """
+    config, conn = _get_config_and_conn(env_file, db_path, log_level)
+
+    if dry_run:
+        typer.echo("[dry-run] Garmin will be called. No database writes will happen.")
+
+    effective_to = to_date or _today()
+    client = GarminClient(config)
+    engine = IntradaySyncEngine(config, conn, client, dry_run=dry_run)
+
+    try:
+        result = engine.backfill_intraday(from_date=from_date, to_date=effective_to)
+        typer.echo(
+            f"Done. fetched={result['fetched']} stored={result['stored']} "
+            f"skipped={result['skipped']} updated={result['updated']}"
+        )
+    except LoginRateLimitedError as exc:
+        typer.echo(f"Rate limited during login: {exc}", err=True)
+        raise typer.Exit(1)
+    except RateLimitExceeded as exc:
+        typer.echo(f"Rate limited (progress saved). Run again to resume: {exc}", err=True)
+        raise typer.Exit(1)
+    except Exception as exc:
+        typer.echo(f"Backfill failed (progress saved). Run again to resume: {exc}", err=True)
+        raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
 # sync-recent-health
 # ---------------------------------------------------------------------------
 
@@ -635,6 +722,7 @@ def cmd_sync_all(
         ("activity-details", lambda: DetailSyncEngine(config, conn, client, dry_run=dry_run).sync_recent_details(limit=limit)),
         ("activity-samples", lambda: SampleSyncEngine(config, conn, client, dry_run=dry_run).sync_recent_samples(limit=samples_limit)),
         ("health", lambda: HealthSyncEngine(config, conn, client, dry_run=dry_run).sync_recent_health(days=days)),
+        ("intraday", lambda: IntradaySyncEngine(config, conn, client, dry_run=dry_run).sync_intraday(days=days)),
         ("performance-ranges", lambda: PerformanceSyncEngine(config, conn, client, dry_run=dry_run).sync_performance_ranges(from_date, to_date)),
         ("performance", lambda: PerformanceDaySyncEngine(config, conn, client, dry_run=dry_run).sync_performance(from_date, to_date)),
     ]

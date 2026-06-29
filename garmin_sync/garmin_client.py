@@ -158,6 +158,24 @@ class GarminClient:
         result = self._rate_limiter.execute(client.get_heart_rates, cdate)
         return result if isinstance(result, dict) else {}
 
+    def get_all_day_stress(self, cdate: str) -> dict[str, Any]:
+        """Per-sample all-day stress data for a calendar date."""
+        client = self._ensure_client()
+        result = self._rate_limiter.execute(client.get_all_day_stress, cdate)
+        return result if isinstance(result, dict) else {}
+
+    def get_steps_data(self, cdate: str) -> list[dict[str, Any]]:
+        """Intraday steps data (15-min blocks) for a calendar date."""
+        client = self._ensure_client()
+        result = self._rate_limiter.execute(client.get_steps_data, cdate)
+        return result if isinstance(result, list) else []
+
+    def get_respiration_data(self, cdate: str) -> dict[str, Any]:
+        """Per-sample respiration rate data for a calendar date."""
+        client = self._ensure_client()
+        result = self._rate_limiter.execute(client.get_respiration_data, cdate)
+        return result if isinstance(result, dict) else {}
+
     # ------------------------------------------------------------------
     # Activity data
     # ------------------------------------------------------------------

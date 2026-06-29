@@ -1060,3 +1060,164 @@ class SampleSyncEngine:
             raise
 
         return stats.to_result()
+
+
+# ---------------------------------------------------------------------------
+# Intraday health time-series sync (Phase 7)
+# ---------------------------------------------------------------------------
+
+_INTRADAY_CURSOR = "intraday_health"
+
+_INTRADAY_FETCHERS = [
+    # (data_type, client_method_name, normalise_fn, replace_fn)
+    ("intraday_hr",          "get_heart_rates",    normalise.normalise_intraday_heart_rate, repo.replace_intraday_heart_rate),
+    ("intraday_stress",      "get_all_day_stress", normalise.normalise_intraday_stress,     repo.replace_intraday_stress),
+    ("intraday_steps",       "get_steps_data",     normalise.normalise_intraday_steps,      repo.replace_intraday_steps),
+    ("intraday_respiration", "get_respiration_data", normalise.normalise_intraday_respiration, repo.replace_intraday_respiration),
+]
+
+
+class IntradaySyncEngine:
+    """Syncs per-minute/per-sample intraday health data.
+
+    Four data types per date:
+      intraday_hr          — per-minute HR all day (from get_heart_rates)
+      intraday_stress      — per-~4min stress (from get_all_day_stress)
+      intraday_steps       — per-15min step blocks (from get_steps_data)
+      intraday_respiration — per-sample respiration (from get_respiration_data)
+
+    Uses DELETE+INSERT per date so re-running is safe.
+    Cursor tracks the oldest successfully processed date for resumable backfill.
+    """
+
+    def __init__(
+        self,
+        config: Config,
+        conn: sqlite3.Connection,
+        client: GarminClient,
+        dry_run: bool = False,
+    ) -> None:
+        self._config = config
+        self._conn = conn
+        self._client = client
+        self._dry_run = dry_run
+
+    def _date_range(self, from_date: str, to_date: str) -> list[str]:
+        start = date.fromisoformat(from_date)
+        end = date.fromisoformat(to_date)
+        if end < start:
+            return []
+        return [(start + timedelta(days=i)).isoformat() for i in range((end - start).days + 1)]
+
+    def _process_date(self, date_str: str, stats: _Stats) -> None:
+        """Fetch and store all four intraday data types for one calendar date."""
+        for data_type, method_name, norm_fn, replace_fn in _INTRADAY_FETCHERS:
+            try:
+                fetch_fn = getattr(self._client, method_name)
+                raw = fetch_fn(date_str)
+                if not raw:
+                    logger.debug("Empty %s for %s.", data_type, date_str)
+                    continue
+
+                payload_json = _canonical_json(raw)
+                payload_hash = _sha256(payload_json)
+
+                if self._dry_run:
+                    logger.info("[dry-run] would store %s for %s", data_type, date_str)
+                    stats.fetched += 1
+                    continue
+
+                raw_id, was_changed = repo.upsert_raw_payload_by_date(
+                    self._conn,
+                    source="garmin_connect",
+                    data_type=data_type,
+                    date=date_str,
+                    payload_json=payload_json,
+                    payload_hash=payload_hash,
+                )
+                stats.fetched += 1
+
+                if was_changed:
+                    rows = norm_fn(raw, date_str, raw_id)
+                    replace_fn(self._conn, date_str, rows)
+                    stats.stored += 1
+                    stats.updated += 1
+                    logger.debug("Stored %d %s rows for %s.", len(rows), data_type, date_str)
+                else:
+                    stats.skipped += 1
+
+            except Exception as exc:
+                from garmin_sync.rate_limit import LoginRateLimitedError, RateLimitExceeded
+                if isinstance(exc, (LoginRateLimitedError, RateLimitExceeded)):
+                    raise
+                logger.warning(
+                    "Intraday fetch failed for %s on %s: %s — continuing.",
+                    data_type, date_str, exc,
+                )
+                stats.skipped += 1
+
+    def sync_intraday(self, days: int = 7) -> SyncResult:
+        """Fetch intraday data for the last N days. Always re-syncs (Garmin corrects retroactively)."""
+        today = date.today()
+        from_date = (today - timedelta(days=days - 1)).isoformat()
+        to_date = today.isoformat()
+        dates = self._date_range(from_date, to_date)
+        total = len(dates)
+        logger.info("sync-intraday: %d days (%s to %s)", total, from_date, to_date)
+
+        stats = _Stats()
+        run_id = repo.create_sync_run(self._conn, "sync-intraday")
+        try:
+            for i, date_str in enumerate(dates, 1):
+                logger.info("Intraday [%d/%d] %s", i, total, date_str)
+                self._process_date(date_str, stats)
+                if not self._dry_run:
+                    repo.update_cursor(self._conn, _INTRADAY_CURSOR, last_successful_date=date_str)
+            repo.finish_sync_run(self._conn, run_id, "completed")
+            logger.info(
+                "sync-intraday done: fetched=%d stored=%d skipped=%d updated=%d",
+                stats.fetched, stats.stored, stats.skipped, stats.updated,
+            )
+        except Exception as exc:
+            repo.finish_sync_run(self._conn, run_id, "failed", error=str(exc))
+            raise
+        return stats.to_result()
+
+    def backfill_intraday(self, from_date: str, to_date: str) -> SyncResult:
+        """Backfill intraday data for a date range, newest-first, resumable via cursor."""
+        cursor = repo.get_cursor(self._conn, _INTRADAY_CURSOR)
+        resume_from = cursor["last_successful_date"] if cursor else None
+
+        if resume_from:
+            resume_dt = date.fromisoformat(resume_from) - timedelta(days=1)
+            effective_to = resume_dt.isoformat()
+            logger.info("Resuming intraday backfill from %s (back to %s)", resume_from, from_date)
+            if effective_to < from_date:
+                logger.info("Intraday backfill already complete.")
+                return _Stats().to_result()
+        else:
+            effective_to = to_date
+
+        dates = list(reversed(self._date_range(from_date, effective_to)))
+        total = len(dates)
+        logger.info("backfill-intraday: %d dates from %s back to %s", total, effective_to, from_date)
+
+        stats = _Stats()
+        run_id = repo.create_sync_run(self._conn, "backfill-intraday")
+        try:
+            for i, date_str in enumerate(dates, 1):
+                if i % 50 == 0 or i == total:
+                    logger.info("Progress: %d/%d dates processed.", i, total)
+                logger.info("Intraday [%d/%d] %s", i, total, date_str)
+                self._process_date(date_str, stats)
+                if not self._dry_run:
+                    repo.update_cursor(self._conn, _INTRADAY_CURSOR, last_successful_date=date_str)
+            repo.finish_sync_run(self._conn, run_id, "completed")
+            logger.info(
+                "backfill-intraday done: fetched=%d stored=%d skipped=%d updated=%d",
+                stats.fetched, stats.stored, stats.skipped, stats.updated,
+            )
+        except Exception as exc:
+            repo.finish_sync_run(self._conn, run_id, "failed", error=str(exc))
+            raise
+        return stats.to_result()

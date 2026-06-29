@@ -678,6 +678,58 @@ def get_activity_samples(
     )
 
 
+def get_intraday_heart_rate(
+    conn: sqlite3.Connection,
+    date_str: str,
+) -> list[dict]:
+    """Return per-minute HR rows for a calendar date, ordered by time."""
+    return _rows(
+        conn,
+        "SELECT timestamp_utc, heart_rate FROM intraday_heart_rate"
+        " WHERE date = ? ORDER BY timestamp_utc ASC",
+        (date_str,),
+    )
+
+
+def get_intraday_stress(
+    conn: sqlite3.Connection,
+    date_str: str,
+) -> list[dict]:
+    """Return per-sample stress rows for a calendar date, ordered by time."""
+    return _rows(
+        conn,
+        "SELECT timestamp_utc, stress_level FROM intraday_stress"
+        " WHERE date = ? ORDER BY timestamp_utc ASC",
+        (date_str,),
+    )
+
+
+def get_intraday_steps(
+    conn: sqlite3.Connection,
+    date_str: str,
+) -> list[dict]:
+    """Return per-15-min step blocks for a calendar date, ordered by time."""
+    return _rows(
+        conn,
+        "SELECT timestamp_utc, steps, activity_level FROM intraday_steps"
+        " WHERE date = ? ORDER BY timestamp_utc ASC",
+        (date_str,),
+    )
+
+
+def get_intraday_respiration(
+    conn: sqlite3.Connection,
+    date_str: str,
+) -> list[dict]:
+    """Return per-sample respiration rows for a calendar date, ordered by time."""
+    return _rows(
+        conn,
+        "SELECT timestamp_utc, breaths_per_min FROM intraday_respiration"
+        " WHERE date = ? ORDER BY timestamp_utc ASC",
+        (date_str,),
+    )
+
+
 def get_database_status(conn: sqlite3.Connection) -> dict:
     """Row counts for all tables, sync cursors, and recent sync runs."""
     from garmin_sync import repositories as _repo

@@ -29,6 +29,16 @@ garmin-sync sync-health --from 2020-04-01 --to 2026-06-08   # Full backfill
 garmin-sync sync-recent-health [--days 7]                    # Recent days (run daily)
 ```
 
+### Intraday Health Time-Series
+```bash
+garmin-sync sync-intraday [--days 7]                         # Recent days (run daily, wired into sync-all)
+garmin-sync backfill-intraday [--from-date 2020-01-01]       # Full historical backfill (resumable, run once)
+```
+
+Per-minute HR, per-~4min stress, per-15min steps, and per-sample respiration rate.
+Full backfill is ~9000 API calls (~2260 days × 4 endpoints) and adds ~270MB to the database.
+The backfill is resumable — if interrupted, rerun the same command to continue from where it stopped.
+
 ### Performance Metrics
 ```bash
 # Range-based metrics (lactate threshold, race predictions, endurance score, hill score)
