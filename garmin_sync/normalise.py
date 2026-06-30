@@ -625,6 +625,9 @@ _SAMPLE_METRIC_MAP: dict[str, str] = {
     "speed": "speed_mps",
     "cadence": "cadence",
     "power": "power_w",
+    "directRunCadence": "cadence",
+    "sumDistance": "distance_m",
+    "directGroundContactBalanceLeft": "ground_contact_balance_left",
 }
 
 _INT_SAMPLE_FIELDS = {"heart_rate", "cadence"}
