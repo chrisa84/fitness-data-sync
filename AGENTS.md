@@ -84,6 +84,13 @@ tests/             # in-memory SQLite, mocked Garmin — no network, no creds
   not destructive `ALTER`s. The live DB has years of data.
 - **Rate limiting is real.** Sync commands stop immediately on auth or rate-limit errors.
   Don't add retry loops that hammer Garmin; `rate_limit.py` owns backoff.
+- **Versioning:** the single version source is `__version__` in
+  `garmin_sync/__init__.py` (pyproject reads it dynamically); `garmin-sync --version`
+  prints it. For any user-facing change, bump it (semver: new command/table = minor,
+  fix = patch) and add a `CHANGELOG.md` entry that includes **Upgrade steps** — the
+  exact commands a user must run after updating (e.g. a sync for new data types, a
+  reprocess for normalisation fixes, nothing for docs). Schema migrations are
+  automatic, so never list `init-db` as an upgrade step.
 - **Docs and commits stay plain and professional** — no jokes, no personality, regardless
   of how the surrounding chat reads.
 

@@ -19,6 +19,7 @@ from typing import Annotated, Optional
 
 import typer
 
+from garmin_sync import __version__
 from garmin_sync.config import load_config
 from garmin_sync.db import get_connection, init_db
 from garmin_sync.garmin_client import GarminClient
@@ -33,6 +34,23 @@ app = typer.Typer(
     help="Local, resumable, idempotent Garmin Connect data mirror.",
     no_args_is_help=True,
 )
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"garmin-sync {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: Annotated[
+        Optional[bool],
+        typer.Option("--version", callback=_version_callback, is_eager=True,
+                     help="Show version and exit. See CHANGELOG.md for upgrade steps."),
+    ] = None,
+) -> None:
+    pass
 
 
 def _setup_logging(level: str) -> None:

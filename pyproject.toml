@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "garmin-sync"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Local, resumable, idempotent Garmin Connect data mirror"
 requires-python = ">=3.12"
 dependencies = [
@@ -29,6 +29,9 @@ parquet = [
 mcp = [
     "mcp>=1.27",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "garmin_sync.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["."]
