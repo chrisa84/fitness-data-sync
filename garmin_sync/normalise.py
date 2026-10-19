@@ -606,6 +606,8 @@ _SAMPLE_METRIC_MAP: dict[str, str] = {
     "directLatitude": "lat",
     "directLongitude": "lon",
     "directAltitude": "altitude_m",
+    "directElevation": "altitude_m",
+    "directAirTemperature": "temperature_c",
     "directHeartRate": "heart_rate",
     "directSpeed": "speed_mps",
     "directCadence": "cadence",
@@ -696,6 +698,7 @@ def normalise_activity_samples(
             "vertical_oscillation_cm": None,
             "vertical_ratio_pct": None,
             "stride_length_cm": None,
+            "temperature_c": None,
             "raw_payload_id": raw_payload_id,
         }
 

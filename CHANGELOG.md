@@ -12,6 +12,22 @@ skipped, in order. Schema changes always apply automatically the first time
 any command opens the database, so `init-db` is never required for an upgrade
 (only for a brand-new database).
 
+## [0.5.2] - 2026-10-19
+
+### Fixed
+- `altitude_m` in `activity_sample` was always NULL: Garmin sends elevation as
+  `directElevation`, which was missing from the sample normalisation map.
+- `reprocess-activity-samples` loaded every raw sample payload into memory at
+  once (gigabytes on a long history). It now loads one payload at a time.
+
+### Added
+- `activity_sample.temperature_c`, from `directAirTemperature` (the watch's own
+  sensor, so it reads warm when worn). Added automatically on first open.
+
+### Upgrade steps
+- `garmin-sync reprocess-activity-samples` — fills `altitude_m` and
+  `temperature_c` from stored raw payloads. Local only, no Garmin calls.
+
 ## [0.5.1] - 2026-06-30
 
 ### Fixed

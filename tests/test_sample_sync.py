@@ -143,6 +143,34 @@ def test_normalise_polyline_not_used_when_length_differs():
     assert rows[0]["lon"] is None
 
 
+def test_normalise_elevation_and_temperature_from_real_keys():
+    # Garmin sends directElevation / directAirTemperature, not directAltitude.
+    raw = {
+        "activityId": 777,
+        "metricDescriptors": [
+            {"metricsIndex": 0, "key": "directElevation"},
+            {"metricsIndex": 1, "key": "directAirTemperature"},
+        ],
+        "activityDetailMetrics": [
+            {"startGMT": "2026-10-17 10:30:38", "metrics": [212.4, 14.0]},
+        ],
+    }
+    rows = normalise.normalise_activity_samples(raw, "777", raw_payload_id=1)
+    assert rows[0]["altitude_m"] == pytest.approx(212.4)
+    assert rows[0]["temperature_c"] == pytest.approx(14.0)
+
+
+def test_replace_activity_samples_stores_temperature(db_conn: sqlite3.Connection):
+    _insert_activity(db_conn, "778")
+    raw = _make_raw_samples("778", n=1)
+    raw["metricDescriptors"].append({"metricsIndex": 5, "key": "directAirTemperature"})
+    raw["activityDetailMetrics"][0]["metrics"].append(9.5)
+    rows = normalise.normalise_activity_samples(raw, "778", raw_payload_id=1)
+    repo.replace_activity_samples(db_conn, "778", rows)
+    got = db_conn.execute("SELECT temperature_c FROM activity_sample WHERE activity_id='778'").fetchone()
+    assert got[0] == pytest.approx(9.5)
+
+
 def test_normalise_empty_payload():
     rows = normalise.normalise_activity_samples({}, "555", raw_payload_id=1)
     assert rows == []
@@ -183,7 +211,7 @@ def test_replace_activity_samples_idempotent(db_conn: sqlite3.Connection):
          "ground_contact_ms": None, "ground_contact_balance_left": None,
          "vertical_oscillation_cm": None,
          "vertical_ratio_pct": None, "stride_length_cm": None,
-         "raw_payload_id": raw_id}
+         "temperature_c": None, "raw_payload_id": raw_id}
         for i in range(3)
     ]
 

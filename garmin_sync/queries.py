@@ -665,7 +665,7 @@ def get_activity_samples(
         "speed_mps", "cadence", "power_w", "altitude_m", "lat", "lon",
         "respiration_rate", "ground_contact_ms", "ground_contact_balance_left",
         "vertical_oscillation_cm",
-        "vertical_ratio_pct", "stride_length_cm",
+        "vertical_ratio_pct", "stride_length_cm", "temperature_c",
     }
     if fields:
         cols = ", ".join(c for c in fields if c in allowed) or "*"

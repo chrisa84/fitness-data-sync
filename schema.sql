@@ -258,6 +258,7 @@ CREATE TABLE IF NOT EXISTS activity_sample (
     vertical_oscillation_cm     REAL,
     vertical_ratio_pct          REAL,
     stride_length_cm            REAL,
+    temperature_c               REAL,
     raw_payload_id              INTEGER NOT NULL REFERENCES raw_payload(id),
     PRIMARY KEY (activity_id, sample_index)
 );

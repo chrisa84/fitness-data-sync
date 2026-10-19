@@ -32,6 +32,7 @@ _DAILY_SUMMARY_DERIVED_COLS = [
 
 _ACTIVITY_SAMPLE_NEW_COLS = [
     ("ground_contact_balance_left", "REAL"),
+    ("temperature_c", "REAL"),
 ]
 
 _TRAINING_READINESS_NEW_COLS = [
@@ -73,4 +74,4 @@ def init_db(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE training_readiness RENAME COLUMN recovery_time_h TO recovery_time_min")
         conn.commit()
     _migrate_add_columns(conn, "training_readiness", _TRAINING_READINESS_NEW_COLS)
-    logger.info("Database schema initialised.")
+    logger.debug("Database schema initialised.")

@@ -73,6 +73,7 @@ def _get_config_and_conn(
 
     effective_db = Path(db_path) if db_path else config.garmin_db_path
     conn = get_connection(effective_db)
+    init_db(conn)  # additive migrations; idempotent and cheap
     return config, conn
 
 
@@ -835,6 +836,7 @@ def _get_conn_only(
     _setup_logging(config.log_level)
     effective_db = Path(db_path) if db_path else config.garmin_db_path
     conn = get_connection(effective_db)
+    init_db(conn)  # additive migrations; idempotent and cheap
     return conn
 
 
@@ -1569,15 +1571,19 @@ def cmd_reprocess_activity_samples(
     """Re-normalise activity_sample rows from stored raw_payload. No Garmin calls."""
     conn = _get_conn_only(env_file, db_path, log_level)
 
-    rows = conn.execute(
-        "SELECT garmin_id, payload_json, id FROM raw_payload WHERE data_type='activity_samples'"
+    # Load one payload at a time: all sample payloads together run to gigabytes,
+    # more than the server container's memory limit.
+    ids = conn.execute(
+        "SELECT id, garmin_id FROM raw_payload WHERE data_type='activity_samples' ORDER BY id"
     ).fetchall()
 
     processed = total_samples = 0
-    for row in rows:
-        activity_id = row["garmin_id"]
-        raw = _json.loads(row["payload_json"])
-        samples = normalise.normalise_activity_samples(raw, activity_id, row["id"])
+    for payload_id, activity_id in ids:
+        payload_json = conn.execute(
+            "SELECT payload_json FROM raw_payload WHERE id=?", (payload_id,)
+        ).fetchone()[0]
+        raw = _json.loads(payload_json)
+        samples = normalise.normalise_activity_samples(raw, activity_id, payload_id)
         repo.replace_activity_samples(conn, activity_id, samples)
         processed += 1
         total_samples += len(samples)
