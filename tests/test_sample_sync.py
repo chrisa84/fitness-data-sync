@@ -152,7 +152,7 @@ def test_normalise_elevation_and_temperature_from_real_keys():
             {"metricsIndex": 1, "key": "directAirTemperature"},
         ],
         "activityDetailMetrics": [
-            {"startGMT": "2026-10-17 10:30:38", "metrics": [212.4, 14.0]},
+            {"startGMT": "2025-01-01 10:00:00", "metrics": [212.4, 14.0]},
         ],
     }
     rows = normalise.normalise_activity_samples(raw, "777", raw_payload_id=1)
